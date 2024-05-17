@@ -5,7 +5,6 @@ import { useGettext } from "vue3-gettext";
 import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import Button from "primevue/button";
-import ConfirmDialog from "primevue/confirmdialog";
 import SplitButton from "primevue/splitbutton";
 
 import { BUTTON_GREEN } from "@/theme.ts";
@@ -203,7 +202,6 @@ await fetchListsAndPopulateTree();
         :pt="{ root: { style: { background: BUTTON_GREEN } } }"
         @click="createList"
     />
-    <ConfirmDialog :draggable="false" />
     <SplitButton
         class="list-button"
         :label="$gettext('Delete')"

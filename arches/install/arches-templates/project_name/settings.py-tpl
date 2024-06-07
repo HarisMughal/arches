@@ -133,8 +133,6 @@ INSTALLED_APPS = (
     "{{ project_name }}",
 )
 
-ARCHES_APPLICATIONS = ()
-
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -155,14 +153,14 @@ MIDDLEWARE = [
 STATICFILES_DIRS = build_staticfiles_dirs(
     root_dir=ROOT_DIR,
     app_root=APP_ROOT,
-    arches_applications=ARCHES_APPLICATIONS,
+    installed_apps=INSTALLED_APPS,
 )
 
 TEMPLATES = build_templates_config(
     root_dir=ROOT_DIR,
     debug=DEBUG,
     app_root=APP_ROOT,
-    arches_applications=ARCHES_APPLICATIONS,
+    installed_apps=INSTALLED_APPS,
 )
 
 ALLOWED_HOSTS = []
@@ -411,12 +409,4 @@ except ImportError as e:
 
 # returns an output that can be read by NODEJS
 if __name__ == "__main__":
-    transmit_webpack_django_config(
-        root_dir=ROOT_DIR,
-        app_root=APP_ROOT,
-        arches_applications=ARCHES_APPLICATIONS,
-        public_server_address=PUBLIC_SERVER_ADDRESS,
-        static_url=STATIC_URL,
-        webpack_development_server_port=WEBPACK_DEVELOPMENT_SERVER_PORT,
-    )
-
+    transmit_webpack_django_config(**locals())

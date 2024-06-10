@@ -10,7 +10,7 @@ from django.conf import global_settings, settings
 
 
 @contextmanager
-def move_to_end_of_sys_path(*paths):
+def _move_to_end_of_sys_path(*paths):
     _orig_sys_path = sys.path[:]
     for path in paths:
         if path in sys.path:
@@ -26,18 +26,15 @@ def arches_applications():
     from arches import settings as core_settings
 
     return [
-        mod.name for mod in arches_applications_modules(core_settings.INSTALLED_APPS)
+        module.name
+        for module in arches_applications_modules(core_settings.INSTALLED_APPS)
     ]
 
 
 def arches_applications_modules(installed_apps):
-    from arches import settings as core_settings
-
     arches_applications_modules = []
 
     for app in installed_apps or []:
-        if app in core_settings.INSTALLED_APPS:
-            continue
         try:
             config = AppConfig.create(app)
         except ImportError:
@@ -45,7 +42,6 @@ def arches_applications_modules(installed_apps):
             continue
         if getattr(config, "is_arches_application", False):
             arches_applications_modules.append(config.module)
-            break
 
     return arches_applications_modules
 
@@ -151,22 +147,24 @@ def build_templates_config(
 
 
 def transmit_webpack_django_config(**kwargs):
-    is_core = kwargs["APP_NAME"] == "Arches"
-    our_settings = {k: v for k, v in kwargs.items() if k.isupper()}
+    is_arches_core = kwargs["APP_NAME"] == "Arches"
+    transmitted_project_settings = {k: v for k, v in kwargs.items() if k.isupper()}
 
     # We're currently executing APP_NAME's settings.py,
     # we don't need to try to install it, too.
-    if not is_core:
-        our_settings["INSTALLED_APPS"] = list(our_settings["INSTALLED_APPS"])
-        our_settings["INSTALLED_APPS"].remove(kwargs["APP_NAME"])
-    settings.configure(default_settings=global_settings, **our_settings)
+    if not is_arches_core:
+        transmitted_project_settings["INSTALLED_APPS"] = list(
+            transmitted_project_settings["INSTALLED_APPS"]
+        )
+        transmitted_project_settings["INSTALLED_APPS"].remove(kwargs["APP_NAME"])
+    settings.configure(default_settings=global_settings, **transmitted_project_settings)
 
     # Without this `import celery` might resolve to arches.celery or project.celery
-    if is_core:
-        with move_to_end_of_sys_path(os.path.realpath(kwargs["ROOT_DIR"])):
+    if is_arches_core:
+        with _move_to_end_of_sys_path(os.path.realpath(kwargs["ROOT_DIR"])):
             django.setup()
     else:
-        with move_to_end_of_sys_path(os.path.realpath(kwargs["APP_ROOT"])):
+        with _move_to_end_of_sys_path(os.path.realpath(kwargs["APP_ROOT"])):
             django.setup()
 
     arches_applications_paths = {

@@ -124,7 +124,7 @@ class GetFrontendI18NData(APIBase):
         )
 
         for arches_app_module in arches_applications_modules():
-            application_path = list(arches_app_module.__path__)[0]
+            application_path = arches_app_module.__path__[0]
             language_file_path.append(
                 os.path.join(application_path, "locale", user_language + ".json")
             )

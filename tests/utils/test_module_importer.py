@@ -15,7 +15,8 @@ def patched_arches_applications():
 
 
 @mock.patch(
-    "arches.app.utils.module_importer.arches_applications", patched_arches_applications
+    "arches.app.utils.module_importer.list_arches_app_names",
+    patched_arches_applications,
 )
 class ModuleImporterTests(TestCase):
     @override_settings(

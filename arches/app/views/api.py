@@ -1,9 +1,6 @@
-import importlib
 import json
 import logging
 import os
-import re
-import site
 import sys
 import uuid
 import traceback
@@ -69,7 +66,7 @@ from arches.app.utils.permission_backend import user_is_resource_editor
 from arches.app.search.components.base import SearchFilterFactory
 from arches.app.datatypes.datatypes import DataTypeFactory, EDTFDataType
 from arches.app.search.search_engine_factory import SearchEngineFactory
-from arches.settings_utils import arches_applications_modules
+from arches.settings_utils import list_arches_app_paths
 
 logger = logging.getLogger(__name__)
 
@@ -123,10 +120,9 @@ class GetFrontendI18NData(APIBase):
             os.path.join(settings.APP_ROOT, "locale", user_language + ".json")
         )
 
-        for arches_app_module in arches_applications_modules():
-            application_path = arches_app_module.__path__[0]
+        for arches_app_path in list_arches_app_paths():
             language_file_path.append(
-                os.path.join(application_path, "locale", user_language + ".json")
+                os.path.join(arches_app_path, "locale", user_language + ".json")
             )
 
         language_file_path.append(

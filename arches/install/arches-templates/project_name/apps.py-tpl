@@ -1,0 +1,16 @@
+from django.apps import AppConfig
+
+from arches.settings_utils import inject_arches_applications_directories
+
+
+class {{ project_name }}Config(AppConfig):
+    name = "{{ project_name }}"
+    # consider adding verbose_name = ...
+    is_arches_application = True
+
+    def ready(self):
+        from django.conf import settings
+
+        if self.name == settings.INSTALLED_APPS[-1]:
+            inject_arches_applications_directories()
+            # consider adjusting urls for i18n here also (?)

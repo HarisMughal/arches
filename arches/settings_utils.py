@@ -5,50 +5,42 @@ import sys
 from contextlib import contextmanager
 
 import django
-from django.apps import apps, AppConfig
+from django.apps import apps
 from django.conf import global_settings, settings
 
 
 @contextmanager
-def _move_to_end_of_sys_path(*paths):
+def _move_to_end_of_sys_path(*paths, add_cwd=False):
     _orig_sys_path = sys.path[:]
     for path in paths:
         if path in sys.path:
             sys.path.remove(path)
             sys.path.append(path)
+    if add_cwd:
+        sys.path.append(os.getcwd())
     try:
         yield
     finally:
         sys.path = _orig_sys_path
 
 
-def arches_applications():
-    from arches import settings as core_settings
-
+def list_arches_app_names():
     return [
-        module.name
-        for module in arches_applications_modules(core_settings.INSTALLED_APPS)
+        config.name
+        for config in apps.get_app_configs()
+        if getattr(config, "is_arches_application", False)
     ]
 
 
-def arches_applications_modules(installed_apps):
-    arches_applications_modules = []
-
-    for app in installed_apps or []:
-        try:
-            config = AppConfig.create(app)
-        except ImportError:
-            # Something not pip-installed (the project) might not be importable yet.
-            continue
-        if getattr(config, "is_arches_application", False):
-            arches_applications_modules.append(config.module)
-
-    return arches_applications_modules
+def list_arches_app_paths():
+    return [
+        config.module.__path__[0]
+        for config in apps.get_app_configs()
+        if getattr(config, "is_arches_application", False)
+    ]
 
 
-def build_staticfiles_dirs(
-    root_dir, app_root=None, installed_apps=None, additional_directories=None
-):
+def build_staticfiles_dirs(root_dir, app_root=None, additional_directories=None):
     """
     Builds the STATICFILES_DIRS tuple with respect to ordering projects,
     packages, additional directories.
@@ -57,7 +49,6 @@ def build_staticfiles_dirs(
 
     root_dir -- string, os-safe absolute path to arches-core root directory
     app_root -- string, os-safe absolute path to application directory
-    installed_apps -- from django settings, to check for arches applications
     additional_directories -- list of os-safe absolute paths
     """
     directories = []
@@ -73,9 +64,6 @@ def build_staticfiles_dirs(
             ("node_modules", os.path.join(app_root, "..", "node_modules"))
         )
 
-    for module in arches_applications_modules(installed_apps):
-        directories.append(os.path.join(module.__path__[0], "media"))
-
     directories.append(os.path.join(root_dir, "app", "media", "build"))
     directories.append(os.path.join(root_dir, "app", "media"))
     directories.append(("node_modules", os.path.join(root_dir, "..", "node_modules")))
@@ -87,7 +75,6 @@ def build_templates_config(
     root_dir,
     debug,
     app_root=None,
-    installed_apps=None,
     additional_directories=None,
     context_processors=None,
 ):
@@ -99,7 +86,6 @@ def build_templates_config(
     root_dir -- string, os-safe absolute path to arches-core root directory
     debug -- boolean representing the DEBUG value derived from settings
     app_root -- string, os-safe absolute path to application directory
-    installed_apps -- from django settings, to check for arches applications
     additional_directories -- list of os-safe absolute paths
     context_processors -- list of strings representing desired context processors
     """
@@ -111,9 +97,6 @@ def build_templates_config(
 
     if app_root:
         directories.append(os.path.join(app_root, "templates"))
-
-    for module in arches_applications_modules(installed_apps):
-        directories.append(os.path.join(module.__path__[0], "templates"))
 
     directories.append(os.path.join(root_dir, "app", "templates"))
 
@@ -146,17 +129,34 @@ def build_templates_config(
     ]
 
 
+def inject_arches_applications_directories():
+    from django.conf import settings
+
+    arches_app_paths = list_arches_app_paths()
+
+    arches_app_template_dirs = [
+        os.path.join(arches_app_path, "templates")
+        for arches_app_path in arches_app_paths
+    ]
+    settings.TEMPLATES = (
+        *settings.TEMPLATES[:-1],
+        *arches_app_template_dirs,
+        *settings.TEMPLATES[-1],
+    )
+
+    arches_app_media_dirs = [
+        os.path.join(arches_app_path, "media") for arches_app_path in arches_app_paths
+    ]
+    settings.STATICFILES_DIRS = (
+        *settings.STATICFILES_DIRS[:-3],
+        *arches_app_media_dirs,
+        *settings.STATICFILES_DIRS[-3:],
+    )
+
+
 def transmit_webpack_django_config(**kwargs):
     is_arches_core = kwargs["APP_NAME"] == "Arches"
     transmitted_project_settings = {k: v for k, v in kwargs.items() if k.isupper()}
-
-    # We're currently executing APP_NAME's settings.py,
-    # we don't need to try to install it, too.
-    if not is_arches_core:
-        transmitted_project_settings["INSTALLED_APPS"] = list(
-            transmitted_project_settings["INSTALLED_APPS"]
-        )
-        transmitted_project_settings["INSTALLED_APPS"].remove(kwargs["APP_NAME"])
     settings.configure(default_settings=global_settings, **transmitted_project_settings)
 
     # Without this `import celery` might resolve to arches.celery or project.celery
@@ -164,21 +164,21 @@ def transmit_webpack_django_config(**kwargs):
         with _move_to_end_of_sys_path(os.path.realpath(kwargs["ROOT_DIR"])):
             django.setup()
     else:
-        with _move_to_end_of_sys_path(os.path.realpath(kwargs["APP_ROOT"])):
+        with _move_to_end_of_sys_path(
+            os.path.realpath(kwargs["APP_ROOT"]), add_cwd=True
+        ):
             django.setup()
 
-    arches_applications_paths = {
-        config.name: config.module.__path__[0]
-        for config in apps.get_app_configs()
-        if getattr(config, "is_arches_application", False)
-    }
+    arches_app_names = list_arches_app_names()
+    arches_app_paths = list_arches_app_paths()
+    path_lookup = dict(zip(arches_app_names, arches_app_paths, strict=True))
 
     sys.stdout.write(
         json.dumps(
             {
                 "APP_ROOT": os.path.realpath(kwargs["APP_ROOT"]),
-                "ARCHES_APPLICATIONS": list(arches_applications_paths),
-                "ARCHES_APPLICATIONS_PATHS": arches_applications_paths,
+                "ARCHES_APPLICATIONS": arches_app_names,
+                "ARCHES_APPLICATIONS_PATHS": path_lookup,
                 "SITE_PACKAGES_DIRECTORY": site.getsitepackages()[0],
                 "PUBLIC_SERVER_ADDRESS": kwargs["PUBLIC_SERVER_ADDRESS"],
                 "ROOT_DIR": os.path.realpath(kwargs["ROOT_DIR"]),

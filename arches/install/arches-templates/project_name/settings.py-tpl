@@ -153,14 +153,12 @@ MIDDLEWARE = [
 STATICFILES_DIRS = build_staticfiles_dirs(
     root_dir=ROOT_DIR,
     app_root=APP_ROOT,
-    installed_apps=INSTALLED_APPS,
 )
 
 TEMPLATES = build_templates_config(
     root_dir=ROOT_DIR,
     debug=DEBUG,
     app_root=APP_ROOT,
-    installed_apps=INSTALLED_APPS,
 )
 
 ALLOWED_HOSTS = []

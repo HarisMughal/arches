@@ -13,4 +13,3 @@ class {{ project_name }}Config(AppConfig):
 
         if self.name == settings.INSTALLED_APPS[-1]:
             inject_arches_applications_directories()
-            # consider adjusting urls for i18n here also (?)

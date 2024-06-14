@@ -138,10 +138,10 @@ def inject_arches_applications_directories():
         os.path.join(arches_app_path, "templates")
         for arches_app_path in arches_app_paths
     ]
-    settings.TEMPLATES = (
-        *settings.TEMPLATES[:-1],
+    settings.TEMPLATES[0]["DIRS"] = (
+        *settings.TEMPLATES[0]["DIRS"][:-1],
         *arches_app_template_dirs,
-        *settings.TEMPLATES[-1],
+        settings.TEMPLATES[0]["DIRS"][-1],
     )
 
     arches_app_media_dirs = [

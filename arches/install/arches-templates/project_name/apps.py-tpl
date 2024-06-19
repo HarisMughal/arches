@@ -3,13 +3,10 @@ from django.apps import AppConfig
 from arches.settings_utils import inject_arches_applications_directories
 
 
-class {{ project_name }}Config(AppConfig):
+class {{ project_name_title_case }}Config(AppConfig):
     name = "{{ project_name }}"
-    # consider adding verbose_name = ...
+    verbose_name = {{ project_name_title_case }}
     is_arches_application = True
 
     def ready(self):
-        from django.conf import settings
-
-        if self.name == settings.INSTALLED_APPS[-1]:
-            inject_arches_applications_directories()
+        inject_arches_applications_directories()

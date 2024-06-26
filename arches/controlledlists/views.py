@@ -19,11 +19,11 @@ from arches.app.utils.permission_backend import get_nodegroups_by_perm
 from arches.app.utils.response import JSONErrorResponse, JSONResponse
 from arches.app.utils.string_utils import str_to_bool
 from arches.controlledlists.models import (
-    ControlledList,
-    ControlledListItem,
-    ControlledListItemImage,
-    ControlledListItemImageMetadata,
-    ControlledListItemValue,
+    List,
+    ListItem,
+    ListItemImage,
+    ListItemImageMetadata,
+    ListItemValue,
 )
 from arches.controlledlists.utils import field_names
 
@@ -44,19 +44,19 @@ def _prefetch_terms(request):
         if i == 0:
             terms.extend(
                 [
-                    "controlled_list_items",
-                    "controlled_list_items__controlled_list_item_values",
-                    "controlled_list_items__controlled_list_item_images",
-                    "controlled_list_items__controlled_list_item_images__controlled_list_item_image_metadata",
+                    "list_items",
+                    "list_items__list_item_values",
+                    "list_items__list_item_images",
+                    "list_items__list_item_images__list_item_image_metadata",
                 ]
             )
         elif find_children:
             terms.extend(
                 [
-                    f"controlled_list_items{'__children' * i}",
-                    f"controlled_list_items{'__children' * i}__controlled_list_item_values",
-                    f"controlled_list_items{'__children' * i}__controlled_list_item_images",
-                    f"controlled_list_items{'__children' * i}__controlled_list_item_images__controlled_list_item_image_metadata",
+                    f"list_items{'__children' * i}",
+                    f"list_items{'__children' * i}__list_item_values",
+                    f"list_items{'__children' * i}__list_item_images",
+                    f"list_items{'__children' * i}__list_item_images__list_item_image_metadata",
                 ]
             )
     return terms
@@ -65,11 +65,11 @@ def _prefetch_terms(request):
 @method_decorator(
     group_required("RDM Administrator", raise_exception=True), name="dispatch"
 )
-class ControlledListsView(View):
+class ListsView(View):
     def get(self, request):
         """Returns either a flat representation (?flat=true) or a tree (default)."""
         lists = (
-            ControlledList.objects.annotate_node_fields(
+            List.objects.annotate_node_fields(
                 node_ids="pk",
                 node_names="name",
                 nodegroup_ids="nodegroup_id",
@@ -94,15 +94,15 @@ class ControlledListsView(View):
 @method_decorator(
     group_required("RDM Administrator", raise_exception=True), name="dispatch"
 )
-class ControlledListView(View):
+class ListView(View):
     def get(self, request, **kwargs):
         """Returns either a flat representation (?flat=true) or a tree (default)."""
         list_id = kwargs.get("id")
         try:
-            lst = ControlledList.objects.prefetch_related(
-                *_prefetch_terms(request)
-            ).get(pk=list_id)
-        except ControlledList.DoesNotExist:
+            lst = List.objects.prefetch_related(*_prefetch_terms(request)).get(
+                pk=list_id
+            )
+        except List.DoesNotExist:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
 
         flat = str_to_bool(request.GET.get("flat", "false"))
@@ -114,7 +114,7 @@ class ControlledListView(View):
         return JSONResponse(serialized)
 
     def add_new_list(self, name):
-        lst = ControlledList(name=name)
+        lst = List(name=name)
         try:
             lst.full_clean()  # applies default name
         except ValidationError as ve:
@@ -143,7 +143,7 @@ class ControlledListView(View):
         if not update_fields and not sortorder_map:
             return JSONResponse(status=HTTPStatus.BAD_REQUEST)
 
-        clist = ControlledList(id=list_id, **data)
+        clist = List(id=list_id, **data)
 
         exclude_fields = {f for f in field_names(clist) if f not in update_fields}
         try:
@@ -163,8 +163,8 @@ class ControlledListView(View):
 
     def delete(self, request, **kwargs):
         try:
-            list_to_delete = ControlledList.objects.get(pk=kwargs.get("id"))
-        except ControlledList.DoesNotExist:
+            list_to_delete = List.objects.get(pk=kwargs.get("id"))
+        except List.DoesNotExist:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
 
         nodes_using_list = Node.objects.with_controlled_lists().filter(
@@ -191,7 +191,7 @@ class ControlledListView(View):
 @method_decorator(
     group_required("RDM Administrator", raise_exception=True), name="dispatch"
 )
-class ControlledListItemView(View):
+class ListItemView(View):
     def add_new_item(self, request):
         data = JSONDeserializer().deserialize(request.body)
         parent_id = data["parent_id"]
@@ -201,29 +201,23 @@ class ControlledListItemView(View):
         # if the parent is a list or an item. The backend does care whether
         # the parent is a list or an item, so we figure it out here.
         try:
-            controlled_list_id = ControlledListItem.objects.get(
-                pk=parent_id
-            ).controlled_list_id
-        except ControlledListItem.DoesNotExist:
-            controlled_list_id = parent_id
+            list_id = ListItem.objects.get(pk=parent_id).list_id
+        except ListItem.DoesNotExist:
+            list_id = parent_id
 
         try:
             with transaction.atomic():
                 controlled_list = (
-                    ControlledList.objects.filter(pk=controlled_list_id)
-                    .annotate(
-                        max_sortorder=Max(
-                            "controlled_list_items__sortorder", default=-1
-                        )
-                    )
+                    List.objects.filter(pk=list_id)
+                    .annotate(max_sortorder=Max("list_items__sortorder", default=-1))
                     .get()
                 )
-                item = ControlledListItem.objects.create(
-                    controlled_list=controlled_list,
+                item = ListItem.objects.create(
+                    list=controlled_list,
                     sortorder=controlled_list.max_sortorder + 1,
-                    parent_id=None if controlled_list_id == parent_id else parent_id,
+                    parent_id=None if list_id == parent_id else parent_id,
                 )
-        except ControlledList.DoesNotExist:
+        except List.DoesNotExist:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
 
         return JSONResponse(item.serialize(), status=HTTPStatus.CREATED)
@@ -237,7 +231,7 @@ class ControlledListItemView(View):
     def patch(self, request, **kwargs):
         item_id: UUID = kwargs.get("id")
         data = JSONDeserializer().deserialize(request.body)
-        item = ControlledListItem(id=item_id, **data)
+        item = ListItem(id=item_id, **data)
 
         update_fields = list(data)
         if not update_fields:
@@ -265,7 +259,7 @@ class ControlledListItemView(View):
 
     def delete(self, request, **kwargs):
         item_id: UUID = kwargs.get("id")
-        objs_deleted, unused = ControlledListItem.objects.filter(pk=item_id).delete()
+        objs_deleted, unused = ListItem.objects.filter(pk=item_id).delete()
         if not objs_deleted:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
         return JSONResponse(status=HTTPStatus.NO_CONTENT)
@@ -274,12 +268,12 @@ class ControlledListItemView(View):
 @method_decorator(
     group_required("RDM Administrator", raise_exception=True), name="dispatch"
 )
-class ControlledListItemValueView(View):
+class ListItemValueView(View):
     def add_new_value(self, request):
         data = JSONDeserializer().deserialize(request.body)
 
-        value = ControlledListItemValue(
-            controlled_list_item_id=UUID(data["item_id"]),
+        value = ListItemValue(
+            list_item_id=UUID(data["item_id"]),
             valuetype_id=data["valuetype_id"],
             language_id=data["language_id"],
             value=data["value"],
@@ -301,10 +295,8 @@ class ControlledListItemValueView(View):
         data = JSONDeserializer().deserialize(request.body)
 
         try:
-            value = ControlledListItemValue.objects.values_without_images().get(
-                pk=value_id
-            )
-        except ControlledListItemValue.DoesNotExist:
+            value = ListItemValue.objects.values_without_images().get(pk=value_id)
+        except ListItemValue.DoesNotExist:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
 
         value.value = data["value"]
@@ -327,9 +319,7 @@ class ControlledListItemValueView(View):
     def delete(self, request, **kwargs):
         value_id = kwargs.get("id")
         try:
-            value = ControlledListItemValue.objects.values_without_images().get(
-                pk=value_id
-            )
+            value = ListItemValue.objects.values_without_images().get(pk=value_id)
         except:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
 
@@ -345,11 +335,11 @@ class ControlledListItemValueView(View):
 @method_decorator(
     group_required("RDM Administrator", raise_exception=True), name="dispatch"
 )
-class ControlledListItemImageView(View):
+class ListItemImageView(View):
     def add_new_image(self, request):
         uploaded_file = request.FILES["item_image"]
-        img = ControlledListItemImage(
-            controlled_list_item_id=UUID(request.POST["item_id"]),
+        img = ListItemImage(
+            list_item_id=UUID(request.POST["item_id"]),
             valuetype_id="image",
             value=uploaded_file,
         )
@@ -369,7 +359,7 @@ class ControlledListItemImageView(View):
 
     def delete(self, request, **kwargs):
         image_id = kwargs.get("id")
-        count, unused = ControlledListItemImage.objects.filter(pk=image_id).delete()
+        count, unused = ListItemImage.objects.filter(pk=image_id).delete()
         if not count:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
         return JSONResponse(status=HTTPStatus.NO_CONTENT)
@@ -378,11 +368,11 @@ class ControlledListItemImageView(View):
 @method_decorator(
     group_required("RDM Administrator", raise_exception=True), name="dispatch"
 )
-class ControlledListItemImageMetadataView(View):
+class ListItemImageMetadataView(View):
     def add_new_metadata(self, request):
         data = JSONDeserializer().deserialize(request.body)
         data.pop("metadata_label", None)
-        metadata = ControlledListItemImageMetadata(**data)
+        metadata = ListItemImageMetadata(**data)
         try:
             metadata.full_clean()
         except ValidationError as ve:
@@ -400,8 +390,8 @@ class ControlledListItemImageMetadataView(View):
         data = JSONDeserializer().deserialize(request.body)
 
         try:
-            metadata = ControlledListItemImageMetadata.objects.get(pk=metadata_id)
-        except ControlledListItemImageMetadata.DoesNotExist:
+            metadata = ListItemImageMetadata.objects.get(pk=metadata_id)
+        except ListItemImageMetadata.DoesNotExist:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
 
         metadata.value = data["value"]
@@ -423,9 +413,7 @@ class ControlledListItemImageMetadataView(View):
 
     def delete(self, request, **kwargs):
         metadata_id = kwargs.get("id")
-        count, unused = ControlledListItemImageMetadata.objects.filter(
-            pk=metadata_id
-        ).delete()
+        count, unused = ListItemImageMetadata.objects.filter(pk=metadata_id).delete()
         if not count:
             return JSONErrorResponse(status=HTTPStatus.NOT_FOUND)
         return JSONResponse(status=HTTPStatus.NO_CONTENT)
